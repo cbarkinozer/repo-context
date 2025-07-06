@@ -10,6 +10,8 @@ import stat
 from urllib.parse import urlparse
 import json
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError 
+from streamlit_javascript import st_javascript
 
 
 # Conditional imports for dependency parsing
@@ -66,8 +68,6 @@ KEY_FILE_HEURISTICS = {
 }
 
 
-# --- Helper Functions ---
-
 def remove_readonly(func, path, exc_info):
     if not os.access(path, os.W_OK):
         os.chmod(path, stat.S_IWRITE)
@@ -95,14 +95,13 @@ def get_repo_metadata(repo):
         latest_commit = repo.head.commit
         commit_hash = latest_commit.hexsha
         commit_message = latest_commit.message.strip()
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
-        return commit_hash, commit_message, timestamp
+        # The timestamp is now generated in the main function where we have timezone access
+        return commit_hash, commit_message
     except Exception as e:
         st.warning(f"Could not read git metadata: {e}")
-        return "N/A", "N/A", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
+        return "N/A", "N/A"
 
 def build_file_tree(root_path, repo_name, ignore_matcher, selected_extensions):
-    """Generates a string representing the file tree."""
     tree_str = f"📂 {repo_name}\n"
     def _tree_generator(dir_path, prefix=""):
         items = sorted(list(dir_path.iterdir()), key=lambda x: (x.is_file(), x.name.lower()))
@@ -117,9 +116,6 @@ def build_file_tree(root_path, repo_name, ignore_matcher, selected_extensions):
                 yield from _tree_generator(path, new_prefix)
             elif path.is_file() and (path.suffix.lower() in selected_extensions or path.name in selected_extensions):
                 yield prefix + connector + "📄 " + path.name
-    
-    # *** THIS IS THE PRIMARY FIX ***
-    # Join the generated lines with a newline character to restore indentation.
     tree_lines = list(_tree_generator(Path(root_path)))
     return tree_str + "\n".join(tree_lines)
 
@@ -127,7 +123,6 @@ def build_file_tree(root_path, repo_name, ignore_matcher, selected_extensions):
 def analyze_dependencies(repo_root):
     tech_stack = set()
     dep_details = []
-    # (Dependency analysis logic is unchanged)
     if (repo_root / "requirements.txt").exists():
         tech_stack.add("Python")
         content = (repo_root / "requirements.txt").read_text()
@@ -178,11 +173,21 @@ def get_code_statistics(content, extension):
 
 
 # --- Main Function ---
-@st.cache_data(ttl=600)
-def generate_context_from_repo(repo_url, selected_extensions, token=None):
+@st.cache_data(ttl=300)
+def generate_context_from_repo(repo_url, selected_extensions, token=None, client_timezone=None):
     temp_dir = tempfile.mkdtemp()
     
     try:
+        
+        try:
+            # Use the client's timezone if valid, otherwise fallback to UTC
+            tz = ZoneInfo(client_timezone) if client_timezone else timezone.utc
+        except ZoneInfoNotFoundError:
+            tz = timezone.utc # Fallback if the browser returns an invalid timezone
+        
+        local_now = datetime.now(tz)
+        timestamp = local_now.strftime("%Y-%m-%d %H:%M:%S %Z")
+
         clone_url = construct_auth_url(repo_url, token)
         if token:
             st.info("Using Personal Access Token for private repository access.")
@@ -196,15 +201,16 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None):
 
         st.info("Analyzing dependencies and project structure...")
         repo = git.Repo(temp_dir)
-        commit_hash, commit_message, timestamp = get_repo_metadata(repo)
+        
+        commit_hash, commit_message = get_repo_metadata(repo)
         tech_stack, dep_details = analyze_dependencies(repo_root)
         
         gitignore_path = repo_root / '.gitignore'
         ignore_matcher = parse_gitignore(gitignore_path, base_dir=repo_root) if gitignore_path.exists() else lambda x: False
 
         context_parts = []
+
         header = f"""
-        Current date and time: {datetime.now()}
         # LLM CONTEXT SNAPSHOT
         - **Repository:** {repo_url}
         - **Snapshot Timestamp:** {timestamp}
@@ -218,8 +224,6 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None):
         
         st.info("Generating file structure...")
         file_tree = build_file_tree(repo_root, repo_name, ignore_matcher, selected_extensions)
-        # *** THIS IS THE SECONDARY FIX ***
-        # Add the markdown code fence ``` here, where it belongs.
         context_parts.append(f"# 2. Repository File Structure\n\n```\n{file_tree}\n```\n\n---")
         
         st.info("Reading and analyzing file contents...")
@@ -260,6 +264,23 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None):
 st.title("🤖 GitHub Repo to LLM Context Generator")
 st.markdown("An intelligent context generator for Large Language Models. This tool analyzes a public **or private** GitHub repository and formats it into a single, comprehensive text file.")
 
+# Get the timezone from the client using JavaScript
+# We store it in session_state to avoid re-running the JS on every interaction.
+if 'timezone' not in st.session_state:
+    # This JS code gets the IANA timezone name (e.g., "America/New_York") from the browser
+    js_code = "Intl.DateTimeFormat().resolvedOptions().timeZone"
+    try:
+        st.session_state.timezone = st_javascript(js_code)
+    except Exception as e:
+        # Fallback to UTC if st_javascript fails (e.g., in a non-browser environment)
+        st.session_state.timezone = "UTC"
+        st.warning(f"Could not determine client timezone, falling back to UTC. Error: {e}")
+
+# Display the detected timezone for user confirmation
+if st.session_state.timezone:
+    st.info(f"🕒 Detected client timezone: **{st.session_state.timezone}**. Timestamps will be in this zone.")
+
+
 repo_url = st.text_input(
     "Enter a GitHub repository URL (public or private)",
     placeholder="https://github.com/user/repo"
@@ -282,7 +303,13 @@ selected_extensions = st.multiselect(
 if st.button("🚀 Generate Intelligent Context", use_container_width=True):
     if repo_url:
         with st.spinner("Hold on... The robots are cloning, analyzing, and building the context..."):
-            full_context = generate_context_from_repo(repo_url, selected_extensions, token=access_token)
+            # Pass the retrieved timezone to the main function
+            full_context = generate_context_from_repo(
+                repo_url, 
+                selected_extensions, 
+                token=access_token, 
+                client_timezone=st.session_state.timezone
+            )
         
         if full_context.startswith("Error:"):
             st.error(full_context)
