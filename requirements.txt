@@ -1,5 +1,4 @@
 streamlit>=1.28.0
-streamlit-javascript==0.1.5
 GitPython>=3.1.40
 gitignore-parser>=0.1.9
 tomli>=2.0.0

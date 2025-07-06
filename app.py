@@ -10,9 +10,7 @@ import stat
 from urllib.parse import urlparse
 import json
 import re
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError 
-from streamlit_javascript import st_javascript
-
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 # Conditional imports for dependency parsing
 try:
@@ -33,7 +31,6 @@ st.set_page_config(
 )
 
 # --- Pre-defined Constants ---
-# (These lists are already excellent, no changes needed)
 DEFAULT_IGNORE = [
     ".git", ".idea", ".vscode", "venv", ".env", "node_modules",
     "__pycache__", "dist", "build", "*.pyc", "*.log", "*.swp", ".DS_Store",
@@ -48,7 +45,7 @@ DEFAULT_IGNORE = [
     "**/android/app/src/main/res/mipmap*",
     "**/ios/Runner/Assets.xcassets/*", "*.o", "*.so", "*.a", "*.class",
     "*.jar", "*.dll", "*.exe", "package-lock.json", "yarn.lock",
-    "pnpm-lock.yaml", "pubspec.lock", "poetry.lock", "Pipfile.lock"
+    "pnpm-lock.yaml", "pubspec.lock", "poetry.lock"
 ]
 COMMON_EXTENSIONS = sorted([
     ".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".scss", ".less", ".svelte",
@@ -66,7 +63,6 @@ KEY_FILE_HEURISTICS = {
     "✅ Test File": ["*_test.py", "*.spec.js", "*.spec.ts", "*.test.js", "*.test.ts"],
     "📖 Documentation": ["README.md", "CONTRIBUTING.md", "LICENSE"]
 }
-
 
 def remove_readonly(func, path, exc_info):
     if not os.access(path, os.W_OK):
@@ -95,7 +91,6 @@ def get_repo_metadata(repo):
         latest_commit = repo.head.commit
         commit_hash = latest_commit.hexsha
         commit_message = latest_commit.message.strip()
-        # The timestamp is now generated in the main function where we have timezone access
         return commit_hash, commit_message
     except Exception as e:
         st.warning(f"Could not read git metadata: {e}")
@@ -174,16 +169,15 @@ def get_code_statistics(content, extension):
 
 # --- Main Function ---
 @st.cache_data(ttl=300)
-def generate_context_from_repo(repo_url, selected_extensions, token=None, client_timezone=None):
+def generate_context_from_repo(repo_url, selected_extensions, token=None, user_timezone="UTC"): # Changed param name for clarity
     temp_dir = tempfile.mkdtemp()
     
     try:
-        
         try:
-            # Use the client's timezone if valid, otherwise fallback to UTC
-            tz = ZoneInfo(client_timezone) if client_timezone else timezone.utc
+            tz = ZoneInfo(user_timezone)
         except ZoneInfoNotFoundError:
-            tz = timezone.utc # Fallback if the browser returns an invalid timezone
+            st.warning(f"Invalid timezone '{user_timezone}' provided. Falling back to UTC.")
+            tz = timezone.utc
         
         local_now = datetime.now(tz)
         timestamp = local_now.strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -201,7 +195,6 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None, client
 
         st.info("Analyzing dependencies and project structure...")
         repo = git.Repo(temp_dir)
-        
         commit_hash, commit_message = get_repo_metadata(repo)
         tech_stack, dep_details = analyze_dependencies(repo_root)
         
@@ -209,7 +202,6 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None, client
         ignore_matcher = parse_gitignore(gitignore_path, base_dir=repo_root) if gitignore_path.exists() else lambda x: False
 
         context_parts = []
-
         header = f"""
         # LLM CONTEXT SNAPSHOT
         - **Repository:** {repo_url}
@@ -264,23 +256,6 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None, client
 st.title("🤖 GitHub Repo to LLM Context Generator")
 st.markdown("An intelligent context generator for Large Language Models. This tool analyzes a public **or private** GitHub repository and formats it into a single, comprehensive text file.")
 
-# Get the timezone from the client using JavaScript
-# We store it in session_state to avoid re-running the JS on every interaction.
-if 'timezone' not in st.session_state:
-    # This JS code gets the IANA timezone name (e.g., "America/New_York") from the browser
-    js_code = "Intl.DateTimeFormat().resolvedOptions().timeZone"
-    try:
-        st.session_state.timezone = st_javascript(js_code)
-    except Exception as e:
-        # Fallback to UTC if st_javascript fails (e.g., in a non-browser environment)
-        st.session_state.timezone = "UTC"
-        st.warning(f"Could not determine client timezone, falling back to UTC. Error: {e}")
-
-# Display the detected timezone for user confirmation
-if st.session_state.timezone:
-    st.info(f"🕒 Detected client timezone: **{st.session_state.timezone}**. Timestamps will be in this zone.")
-
-
 repo_url = st.text_input(
     "Enter a GitHub repository URL (public or private)",
     placeholder="https://github.com/user/repo"
@@ -294,6 +269,30 @@ with st.expander("🔑 Private Repository Access"):
     )
 
 st.subheader("⚙️ Configuration")
+
+# Create a timezone selector for the user
+col1, col2 = st.columns(2)
+with col1:
+    # Get a sorted list of all available IANA timezones
+    all_timezones = sorted(list(available_timezones()))
+    default_tz = "Europe/Istanbul"
+    # Find the index of the default timezone to pre-select it
+    try:
+        default_ix = all_timezones.index(default_tz)
+    except ValueError:
+        default_ix = all_timezones.index("UTC") # Fallback if default not found
+
+    selected_timezone = st.selectbox(
+        "🕒 Select your timezone for timestamps:",
+        options=all_timezones,
+        index=default_ix,
+        help="The snapshot timestamp in the generated file will use this timezone."
+    )
+
+with col2:
+    # This just adds some space, but you could put another config option here
+    pass
+
 selected_extensions = st.multiselect(
     "Select file extensions to include:",
     options=COMMON_EXTENSIONS,
@@ -303,16 +302,16 @@ selected_extensions = st.multiselect(
 if st.button("🚀 Generate Intelligent Context", use_container_width=True):
     if repo_url:
         with st.spinner("Hold on... The robots are cloning, analyzing, and building the context..."):
-            # Pass the retrieved timezone to the main function
+            # Pass the user-selected timezone to the function
             full_context = generate_context_from_repo(
-                repo_url, 
-                selected_extensions, 
-                token=access_token, 
-                client_timezone=st.session_state.timezone
+                repo_url,
+                selected_extensions,
+                token=access_token,
+                user_timezone=selected_timezone
             )
         
         if full_context.startswith("Error:"):
-            st.error(full_context)
+            st.error("Failure!")
         else:
             st.success("Intelligent context successfully generated!")
             repo_name = Path(urlparse(repo_url).path).stem
