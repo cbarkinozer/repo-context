@@ -1,8 +1,8 @@
 # GitHub Repo to LLM Context Generator
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://your-streamlit-app-url.streamlit.app/) <!--- TODO: Replace with your deployed app URL -->
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://repo-context.streamlit.app/)
 
-A Streamlit web application that clones a public GitHub repository and generates a single, well-structured text file. This file is optimized to be used as a comprehensive and clean context for Large Language Models (LLMs) like GPT-4, Claude, or Llama.
+An intelligent context generator for Large Language Models. This tool analyzes a public **or private** GitHub repository, extracts key information, and formats it into a single, comprehensive text file.
 
 ## The Problem
 
@@ -13,22 +13,17 @@ When working with Large Language Models on a software project, providing the ful
 3.  **Irrelevant "Noise":** A raw dump includes useless "noise" for an LLM, such as `node_modules`, `__pycache__`, virtual environments, and build artifacts, which wastes precious context space.
 4.  **Lack of Structure:** A simple concatenation of files makes it hard for the LLM to distinguish where one file ends and another begins.
 
-This tool solves these problems by creating a clean, structured, and relevant snapshot of your repository's current state.
-
+This tool solves these problems by creating a clean, intelligent, and structured snapshot of your repository's current state.
 
 ## ✨ Key Features
 
+*   **Private Repository Support:** Securely analyze private repositories using a GitHub Personal Access Token (PAT).
+*   **Automated Dependency Analysis:** Automatically detects the tech stack and lists all dependencies from files like `requirements.txt`, `package.json`, `pyproject.toml`, and `pubspec.yaml`.
+*   **Intelligent File Tagging:** Uses heuristics to add informative tags to files, such as `[⭐ Likely Project Entry Point]` or `[📦 Container Definition]`, to guide the LLM's focus.
+*   **Code Statistics:** Provides a quick overview of each file's complexity with line, character, and function/class counts.
+*   **Intelligent Filtering:** Automatically respects the repository's `.gitignore` file and excludes a comprehensive list of common non-essential files and directories.
+*   **Rich Metadata Header:** The generated context starts with a helpful header including the repository URL, a timestamp, and the latest commit details.
 *   **Shallow Clone:** Quickly clones only the latest commit of a repository to be fast and resource-efficient.
-*   **Intelligent Filtering:**
-    *   Automatically respects the repository's `.gitignore` file.
-    *   Allows users to select which file extensions to include (e.g., `.py`, `.js`, `.md`).
-    *   Excludes common noise directories like `.git`, `venv`, etc. by default.
-*   **Rich Metadata Header:** The generated context starts with a helpful header including the repository URL, a timestamp, and the latest commit hash and message. This tells the LLM exactly what "state" it's looking at.
-*   **Structured Output:** The output is formatted in clean Markdown with:
-    *   A `tree`-like file structure overview.
-    *   Clear delimiters (`--- FILE: path/to/file ---`) for each file.
-    *   Code blocks with language identifiers for better parsing and syntax highlighting.
-*   **Simple Web UI:** Built with Streamlit for a clean, easy-to-use interface. No command line needed.
 
 ## 🚀 Live Demo
 
@@ -37,56 +32,56 @@ This tool solves these problems by creating a clean, structured, and relevant sn
 ## 📋 How to Use
 
 1.  Navigate to the deployed Streamlit application.
-2.  Paste the full URL of a **public** GitHub repository into the text box.
-3.  (Optional) Select or de-select the file extensions you want to include in the context.
-4.  Click the **"Generate Context"** button.
-5.  Wait for the processing to complete. The full context will be displayed on the page.
-6.  You can use the **"Copy to Clipboard"** button or the **"Download Context.md"** button to get the output.
-7.  Paste this context into your favorite LLM and start your conversation!
+2.  Paste the full URL of a public or private GitHub repository into the text box.
+3.  **For private repositories,** expand the "🔑 Private Repository Access" section and paste your Personal Access Token (PAT).
+4.  (Optional) De-select any file extensions you wish to exclude from the context. All common extensions are included by default.
+5.  Click the **"🚀 Generate Intelligent Context"** button.
+6.  Wait for the processing to complete. The full context will be displayed on the page.
+7.  Use the **"📥 Download Context.md"** button to save the output and feed it to your favorite LLM!
 
 ## 📝 Example Output Structure
 
-The generated output is a single Markdown file designed to be easily parsed by an LLM.
+The generated output is a single, enriched Markdown file designed to be easily parsed by an LLM.
 
 ```markdown
 # LLM CONTEXT SNAPSHOT
-
-- **Repository:** https://github.com/user/repo
-- **Snapshot Timestamp:** 2023-10-27 10:30:00 UTC
+- **Repository:** https://github.com/user/my-python-app
+- **Snapshot Timestamp:** 2024-05-18 10:30:00 UTC
 - **Last Commit Hash:** a1b2c3d4e5f6g7h8i9j0
 - **Last Commit Message:** "feat: Implement user authentication"
-
+- **Detected Technology Stack:** Python
 ---
 
-# 1. Repository File Structure
+# 1. Project Dependencies Analysis
 
-/
-|-- .gitignore
-|-- README.md
-|-- requirements.txt
-`-- src/
-    |-- __init__.py
-    |-- main.py
-    `-- utils.py
-
+**Dependencies (`requirements.txt`):**
+```
+streamlit==1.33.0
+gitpython==3.1.43
+pyyaml==6.0.1
+```
 
 ---
+# 2. Repository File Structure
 
-# 2. File Contents
+```
+📂 my-python-app
+├── 📄 .gitignore
+├── 📄 app.py
+├── 📄 README.md
+└── 📄 requirements.txt
+```
 
---- FILE: README.md ---
+---
+# 3. File Contents
+
+--- FILE: README.md [📖 Documentation] (Lines: 25 | Chars: 850) ---
 ```markdown
 # My Awesome Project
 This is a project that does amazing things...
 ```
 
---- FILE: requirements.txt ---
-```
-streamlit==1.28.0
-gitpython==3.1.40
-```
-
---- FILE: src/main.py ---
+--- FILE: app.py [⭐ Likely Project Entry Point] (Lines: 152 | Chars: 4891 | Funcs/Classes: 6) ---
 ```python
 import streamlit as st
 from utils import helper_function
@@ -124,8 +119,17 @@ To run this application on your local machine, follow these steps.
     ```
 
 3.  **Install the dependencies:**
+    The application has additional dependencies for parsing different configuration files.
     ```bash
     pip install -r requirements.txt
+    ```
+    Your `requirements.txt` should contain:
+    ```
+    streamlit
+    GitPython
+    gitignore-parser
+    tomli
+    PyYAML
     ```
 
 4.  **Run the Streamlit app:**
@@ -140,7 +144,7 @@ The application should now be running and accessible in your web browser at `htt
 *   **Framework:** [Streamlit](https://streamlit.io/)
 *   **Language:** Python 3
 *   **Git Operations:** [GitPython](https://gitpython.readthedocs.io/en/stable/)
-*   **Ignorefile Parsing:** [gitignore-parser](https://pypi.org/project/gitignore-parser/)
+*   **File Parsing:** [gitignore-parser](https://pypi.org/project/gitignore-parser/), [tomli](https://pypi.org/project/tomli/), [PyYAML](https://pypi.org/project/PyYAML/)
 
 ## 📄 License
 
@@ -148,7 +152,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 ## 💡 Future Ideas
 
-*   Support for private repositories using a GitHub Personal Access Token (PAT).
-*   Add a token counter to estimate cost/usage for different LLM APIs.
-*   Allow cloning a specific branch or commit hash.
-*   Direct integration with an LLM API to summarize the generated context.
+*   **Token Counter:** Add a `tiktoken`-based counter to estimate API costs for different models.
+*   **Branch/Commit Selection:** Allow cloning a specific branch or commit hash for historical analysis.
+*   **Direct AI Summary:** Integrate an optional LLM call to generate a high-level summary of the generated context.
+*   **Broader Git Service Support:** Add specific helpers for GitLab and BitBucket private repo authentication.
