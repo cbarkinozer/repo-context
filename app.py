@@ -203,7 +203,9 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None):
         ignore_matcher = parse_gitignore(gitignore_path, base_dir=repo_root) if gitignore_path.exists() else lambda x: False
 
         context_parts = []
-        header = f"""# LLM CONTEXT SNAPSHOT
+        header = f"""
+        Current date and time: {datetime.now()}
+        # LLM CONTEXT SNAPSHOT
         - **Repository:** {repo_url}
         - **Snapshot Timestamp:** {timestamp}
         - **Last Commit Hash:** {commit_hash}
