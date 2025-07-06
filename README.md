@@ -32,7 +32,7 @@ This tool solves these problems by creating a clean, structured, and relevant sn
 
 ## 🚀 Live Demo
 
-**Try the app live here:** [https://your-streamlit-app-url.streamlit.app/](https://your-streamlit-app-url.streamlit.app/) <!--- TODO: Replace this with the actual URL once deployed -->
+**Try the app live here:** [https://repo-context.streamlit.app/](https://repo-context.streamlit.app/)
 
 ## 📋 How to Use
 
