@@ -4,6 +4,11 @@
 
 An intelligent context generator for Large Language Models. This tool analyzes a public **or private** GitHub repository, extracts key information, and formats it into a single, comprehensive text file.
 
+You can use this when:  
+* You've closed the Gemini 2.5 chat in the Aistudio tab and there's no chat history available.
+* Your conversation with the LLM is going in circles. For example, repeating the same explanations or stuck in a dead end during model debugging.
+* You have questions about a repository, whether related to its implementation or its dependencies.
+
 ## The Problem
 
 When working with Large Language Models on a software project, providing the full context of a repository is challenging:
