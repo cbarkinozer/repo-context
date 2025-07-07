@@ -156,23 +156,24 @@ def get_file_heuristic_tag(file_path):
                 return f"[{tag}]"
     return ""
 
-def get_code_statistics(content, extension):
-    lines, chars = len(content.splitlines()), len(content)
+def get_code_statistics(content, extension, line_count):
+    chars = len(content)
     count = 0
     if extension in ['.py', '.pyw']: count = len(re.findall(r'^\s*(def|class)\s', content, re.MULTILINE))
     elif extension in ['.js', '.jsx', '.ts', '.tsx']: count = len(re.findall(r'^\s*(function|class|const|let|var)\s+.*\s*(=>|\()', content, re.MULTILINE))
     elif extension in ['.java', '.kt', '.cs', '.go', '.rs', '.swift']: count = len(re.findall(r'^\s*(public|private|protected|internal)?\s*(class|struct|func|fn|fun|void|static)\s', content, re.MULTILINE))
     label = "Funcs/Classes" if count > 0 else ""
-    stats_str = f"(Lines: {lines} | Chars: {chars}" + (f" | {label}: {count}" if label else "") + ")"
+    stats_str = f"(Lines: {line_count} | Chars: {chars}" + (f" | {label}: {count}" if label else "") + ")"
     return stats_str
 
 
 # --- Main Function ---
 @st.cache_data(ttl=300)
-def generate_context_from_repo(repo_url, selected_extensions, token=None, user_timezone="UTC"): # Changed param name for clarity
+def generate_context_from_repo(repo_url, selected_extensions, file_line_limit=3000, token=None, user_timezone="UTC"):
     temp_dir = tempfile.mkdtemp()
     
     try:
+        truncated_files = []
         try:
             tz = ZoneInfo(user_timezone)
         except ZoneInfoNotFoundError:
@@ -202,8 +203,7 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None, user_t
         ignore_matcher = parse_gitignore(gitignore_path, base_dir=repo_root) if gitignore_path.exists() else lambda x: False
 
         context_parts = []
-        header = f"""
-        # LLM CONTEXT SNAPSHOT
+        header = f"""# LLM CONTEXT SNAPSHOT
         - **Repository:** {repo_url}
         - **Snapshot Timestamp:** {timestamp}
         - **Last Commit Hash:** {commit_hash}
@@ -227,17 +227,47 @@ def generate_context_from_repo(repo_url, selected_extensions, token=None, user_t
                 if path.suffix.lower() in selected_extensions or path.name in selected_extensions:
                     if not is_text_file(path): continue
                     relative_path = path.relative_to(repo_root).as_posix()
-                    content = path.read_text(encoding='utf-8')
-                    stats_str = get_code_statistics(content, path.suffix.lower())
+                    
+                    try:
+                        original_content = path.read_text(encoding='utf-8')
+                    except Exception as e:
+                        st.warning(f"Could not read file {relative_path}: {e}")
+                        continue
+                        
+                    lines = original_content.splitlines()
+                    original_line_count = len(lines)
+                    content_for_output = original_content
+                    
+                    # Calculate stats on the original content for accuracy
+                    stats_str = get_code_statistics(original_content, path.suffix.lower(), original_line_count)
+
+                    # Check if truncation is needed
+                    if file_line_limit > 0 and original_line_count > file_line_limit:
+                        truncated_files.append((relative_path, original_line_count))
+                        content_for_output = "\n".join(lines[:file_line_limit])
+                        content_for_output += f"\n\n... [File truncated at {file_line_limit} lines. Original file had {original_line_count} lines.] ..."
+                        
                     heuristic_tag = get_file_heuristic_tag(path)
                     context_parts.append(f"--- FILE: {relative_path} {heuristic_tag} {stats_str} ---\n")
                     lang = path.suffix.lstrip('.').lower()
-                    context_parts.append(f"```{lang}\n{content}\n```\n")
+                    context_parts.append(f"```{lang}\n{content_for_output}\n```\n")
                     file_count += 1
         repo.close()
 
+        # Add the truncated files section if any exist
+        if truncated_files:
+            truncated_files_list = "\n".join([f"- `{path}` (original: {lines} lines)" for path, lines in truncated_files])
+            truncated_files_section = f"""---
+            # 4. Truncated Files
+
+            The following files were truncated because they exceeded the line limit of {file_line_limit} lines:
+            {truncated_files_list}
+            """
+            context_parts.append(truncated_files_section)
+
         if file_count == 0: st.warning("No files matched the selected extensions. The context will be minimal.")
-        st.success(f"Context generated! Found and analyzed {file_count} relevant files.")
+        truncation_info = f" Truncated {len(truncated_files)} files due to the line limit." if truncated_files else ""
+        st.success(f"Context generated! Found and analyzed {file_count} relevant files.{truncation_info}")
         return "\n".join(context_parts)
 
     except git.GitCommandError as e:
@@ -270,7 +300,7 @@ with st.expander("🔑 Private Repository Access"):
 
 st.subheader("⚙️ Configuration")
 
-# Create a timezone selector for the user
+# Create a timezone selector and line limit input
 col1, col2 = st.columns(2)
 with col1:
     # Get a sorted list of all available IANA timezones
@@ -290,8 +320,14 @@ with col1:
     )
 
 with col2:
-    # This just adds some space, but you could put another config option here
-    pass
+    file_line_limit = st.number_input(
+        "📝 File Line Limit (0 for no limit)",
+        min_value=0,
+        value=3000,
+        step=100,
+        help="Files exceeding this number of lines will be truncated. Set to 0 to disable the limit."
+    )
+
 
 selected_extensions = st.multiselect(
     "Select file extensions to include:",
@@ -302,16 +338,17 @@ selected_extensions = st.multiselect(
 if st.button("🚀 Generate Intelligent Context", use_container_width=True):
     if repo_url:
         with st.spinner("Hold on... The robots are cloning, analyzing, and building the context..."):
-            # Pass the user-selected timezone to the function
+            # Pass the user-selected timezone and line limit to the function
             full_context = generate_context_from_repo(
                 repo_url,
                 selected_extensions,
+                file_line_limit=file_line_limit,
                 token=access_token,
                 user_timezone=selected_timezone
             )
         
         if full_context.startswith("Error:"):
-            st.error("Failure!")
+            st.error(full_context)
         else:
             st.success("Intelligent context successfully generated!")
             repo_name = Path(urlparse(repo_url).path).stem
