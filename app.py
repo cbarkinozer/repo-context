@@ -48,14 +48,78 @@ DEFAULT_IGNORE = [
     "pnpm-lock.yaml", "pubspec.lock", "poetry.lock"
 ]
 COMMON_EXTENSIONS = sorted([
-    ".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".scss", ".less", ".svelte",
-    ".py", ".pyw", ".ipynb", ".dart", ".java", ".kt", ".swift", ".go", ".rb",
-    ".php", ".rs", ".json", ".xml", ".yml", ".yaml", ".toml", ".ini", ".cfg",
-    ".conf", ".properties", ".md", ".txt", ".rtf", ".csv", ".sh", ".ps1",
-    ".bat", ".dockerfile", "Dockerfile", ".gitignore", "LICENSE", ".gradle",
-    "CMakeLists.txt", "*.podspec", "*.project", "*.sln", "*.csproj",
-    "pubspec.yaml", "analysis_options.yaml"
+    # Web
+    ".html", ".htm", ".xhtml", ".css", ".scss", ".sass", ".less",
+    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+    ".json", ".jsonc", ".xml",
+
+    # Markdown & text
+    ".md", ".markdown", ".txt", ".rtf", ".adoc", ".rst", ".org",
+
+    # Python
+    ".py", ".pyw", ".ipynb", ".pyd", ".pyi", ".pyx",
+
+    # Java
+    ".java", ".jar", ".jsp", ".gradle", ".properties", "*.project", "*.classpath",
+
+    # Kotlin
+    ".kt", ".kts",
+
+    # Swift
+    ".swift",
+
+    # Go
+    ".go", "go.mod", "go.sum",
+
+    # Ruby
+    ".rb", ".erb", ".rake", "Rakefile", ".gemspec", "Gemfile", "Gemfile.lock",
+
+    # PHP
+    ".php", ".phtml",
+
+    # Rust
+    ".rs", "Cargo.toml", "Cargo.lock",
+
+    # Dart & Flutter
+    ".dart", "pubspec.yaml", "analysis_options.yaml", "*.podspec",
+
+    # C / C++ / CMake
+    ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h++",
+    "CMakeLists.txt", ".cmake",
+
+    # C#
+    ".cs", "*.sln", "*.csproj",
+
+    # Shell / CLI
+    ".sh", ".bash", ".zsh", ".ksh", ".fish", ".ps1", ".bat", ".cmd",
+
+    # Containers & Infra
+    ".dockerfile", "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+    ".env", ".env.example",
+
+    # Build systems
+    "Makefile", "makefile", ".ninja", "build.ninja", "BUILD", "WORKSPACE",
+
+    # JavaScript/Node
+    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    ".babelrc", ".eslintrc", ".eslintrc.json", ".eslintrc.js", ".prettierrc",
+    ".prettierrc.json", ".prettierrc.js", ".stylelintrc", "vite.config.js", "webpack.config.js",
+
+    # Config / Data / DevOps
+    ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf", ".env",
+    ".editorconfig", ".gitconfig", ".gitattributes", ".gitignore",
+
+    # Dotfiles & Licenses
+    "LICENSE", "README.md", "README", "CHANGELOG.md", "CONTRIBUTING.md",
+
+    # Svelte
+    ".svelte",
+
+    # Misc
+    ".sql", ".db", ".sqlite", ".log", ".csv", ".tsv",
+    ".asm", ".wasm", ".vb", ".vbs", ".fs", ".fsx", ".clj", ".cljs", ".edn",
 ])
+
 KEY_FILE_HEURISTICS = {
     "⭐ Likely Project Entry Point": ["main.py", "app.py", "index.js", "main.js", "index.ts", "main.ts", "index.html", "__main__.py"],
     "📦 Container Definition": ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"],
