@@ -160,30 +160,39 @@ def get_repo_metadata(repo):
         st.warning(f"Could not read git metadata: {e}")
         return "N/A", "N/A"
 
-# --- NEW ---
+# --- FIX --- More robust URL parsing
 def parse_github_url(url):
     """
-    Parses a GitHub URL to determine if it points to a subdirectory.
-    Returns (base_repo_url, branch, subdirectory) or (url, None, None).
+    Parses a GitHub URL to extract base repo URL, branch, and subdirectory.
     """
+    # Standard subdirectory URL: https://github.com/user/repo/tree/main/src/app
     match = re.match(r"https://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)", url)
     if match:
         user, repo_name, branch, subdirectory = match.groups()
         base_repo_url = f"https://github.com/{user}/{repo_name}.git"
         subdirectory = subdirectory.rstrip('/')
         return base_repo_url, branch, subdirectory
+
+    # Standard repo URL: https://github.com/user/repo or https://github.com/user/repo.git
+    parsed = urlparse(url)
+    if parsed.netloc == "github.com":
+        path_parts = parsed.path.strip('/').split('/')
+        if len(path_parts) >= 2:
+            user = path_parts[0]
+            repo_name = path_parts[1].replace('.git', '')
+            base_repo_url = f"https://github.com/{user}/{repo_name}.git"
+            return base_repo_url, None, None
+
+    # Fallback for any other git URL format
     return url, None, None
 
 
 def build_file_tree(root_path, display_name, ignore_matcher, selected_extensions):
     tree_str = f"📂 {display_name}\n"
-    # --- MODIFIED --- Use a consistent display name
     def _tree_generator(dir_path, prefix=""):
-        # Filter out ignored items before sorting
         items_to_process = []
         try:
             for p in dir_path.iterdir():
-                # The ignore_matcher needs a full path to work correctly
                 if not ignore_matcher(p) and not any(part in DEFAULT_IGNORE for part in p.parts):
                     items_to_process.append(p)
         except FileNotFoundError:
@@ -210,19 +219,19 @@ def analyze_dependencies(repo_root):
     dep_details = []
     if (repo_root / "requirements.txt").exists():
         tech_stack.add("Python")
-        content = (repo_root / "requirements.txt").read_text()
+        content = (repo_root / "requirements.txt").read_text(encoding='utf-8', errors='ignore')
         dep_details.append("**Dependencies (`requirements.txt`):**\n```\n" + content + "\n```")
     if (repo_root / "pyproject.toml").exists() and tomli:
         tech_stack.add("Python")
         try:
-            content = tomli.loads((repo_root / "pyproject.toml").read_text())
+            content = tomli.loads((repo_root / "pyproject.toml").read_text(encoding='utf-8', errors='ignore'))
             deps = content.get("project", {}).get("dependencies", [])
             if deps: dep_details.append("**Dependencies (`pyproject.toml`):**\n- " + "\n- ".join(deps))
         except tomli.TOMLDecodeError: dep_details.append("**Dependencies (`pyproject.toml`):**\n- *Could not parse file.*")
     if (repo_root / "package.json").exists():
         tech_stack.add("JavaScript/TypeScript")
         try:
-            content = json.loads((repo_root / "package.json").read_text())
+            content = json.loads((repo_root / "package.json").read_text(encoding='utf-8', errors='ignore'))
             deps, dev_deps = content.get("dependencies", {}), content.get("devDependencies", {})
             if deps: dep_details.append("**Dependencies (`package.json`):**\n- " + "\n- ".join(deps.keys()))
             if dev_deps: dep_details.append("**Dev Dependencies (`package.json`):**\n- " + "\n- ".join(dev_deps.keys()))
@@ -230,7 +239,7 @@ def analyze_dependencies(repo_root):
     if (repo_root / "pubspec.yaml").exists() and yaml:
         tech_stack.add("Flutter/Dart")
         try:
-            content = yaml.safe_load((repo_root / "pubspec.yaml").read_text())
+            content = yaml.safe_load((repo_root / "pubspec.yaml").read_text(encoding='utf-8', errors='ignore'))
             deps = content.get("dependencies", {})
             if deps: dep_details.append("**Dependencies (`pubspec.yaml`):**\n- " + "\n- ".join(deps.keys()))
         except yaml.YAMLError: dep_details.append("**Dependencies (`pubspec.yaml`):**\n- *Could not parse file.*")
@@ -258,7 +267,6 @@ def get_code_statistics(content, extension, line_count):
 
 
 # --- Main Function ---
-# --- MODIFIED --- Function signature and logic updated to handle subdirectory cloning
 @st.cache_data(ttl=300)
 def generate_context_from_repo(repo_url, selected_extensions, file_line_limit=3000, token=None, user_timezone="UTC"):
     temp_dir = tempfile.mkdtemp()
@@ -274,8 +282,10 @@ def generate_context_from_repo(repo_url, selected_extensions, file_line_limit=30
         local_now = datetime.now(tz)
         timestamp = local_now.strftime("%Y-%m-%d %H:%M:%S %Z")
 
-        # --- NEW --- Parse URL to handle subdirectories
         base_repo_url, branch, subdirectory = parse_github_url(repo_url)
+        if not base_repo_url:
+            return "Error: Could not parse the provided GitHub URL. Please check the format."
+
         clone_url = construct_auth_url(base_repo_url, token)
         
         if token:
@@ -285,7 +295,6 @@ def generate_context_from_repo(repo_url, selected_extensions, file_line_limit=30
         analysis_root = Path(temp_dir)
         repo_display_name = ""
 
-        # --- NEW --- Logic for sparse checkout vs. full clone
         if subdirectory:
             st.info(f"Performing sparse checkout for subdirectory: '{subdirectory}'...")
             repo = git.Repo.init(temp_dir)
@@ -293,21 +302,31 @@ def generate_context_from_repo(repo_url, selected_extensions, file_line_limit=30
             repo.config_writer().set_value("core", "sparseCheckout", "true").release()
             
             sparse_checkout_file = Path(repo.git_dir) / "info" / "sparse-checkout"
-            # Ensure we fetch the specified directory and everything inside it
-            sparse_checkout_file.write_text(f"{subdirectory}/*\n")
-            # Also fetch key repo-level files for context
-            sparse_checkout_file.write_text(f"{subdirectory}/*\n.gitignore\nREADME.md\n", 'a')
+            sparse_content = [
+                f"{subdirectory}/*",
+                "/.gitignore", "/README.md", "/package.json", "/pyproject.toml", "/requirements.txt"
+            ]
+            sparse_checkout_file.write_text("\n".join(sparse_content), encoding="utf-8")
 
-
-            # Pull only the specified branch with depth 1 for speed
-            origin.fetch(f"--depth=1 {branch}")
-            repo.git.checkout(branch)
+            try:
+                st.info(f"Fetching from branch: {branch}...")
+                # --- FIX ---
+                # Changed from origin.fetch(f"--depth=1 {branch}") to the correct syntax
+                # This passes the depth as a keyword argument, preventing the 'invalid refspec' error.
+                origin.fetch(refspec=branch, depth=1)
+                
+                repo.git.checkout(branch)
+                st.info("Sparse checkout successful.")
+            except git.GitCommandError as e:
+                if f"'{branch}'" in str(e) and "not found in upstream" in str(e):
+                    return f"Error: The branch '{branch}' was not found in the repository. Please check the branch name in the URL.\nDetails: {e}"
+                else:
+                    return f"Error: An error occurred during git fetch/checkout. Please check the URL and branch name.\nDetails: {e}"
 
             analysis_root = Path(temp_dir) / subdirectory
             repo_display_name = f"{Path(urlparse(base_repo_url).path).stem}/{subdirectory}"
-            st.info("Sparse checkout successful.")
         else:
-            st.info(f"Cloning repository...")
+            st.info(f"Cloning full repository...")
             repo = git.Repo.clone_from(clone_url, temp_dir, depth=1)
             analysis_root = Path(temp_dir)
             repo_display_name = Path(urlparse(base_repo_url).path).stem
@@ -316,11 +335,8 @@ def generate_context_from_repo(repo_url, selected_extensions, file_line_limit=30
         st.info("Analyzing dependencies and project structure...")
         commit_hash, commit_message = get_repo_metadata(repo)
         
-        # --- MODIFIED --- Use the root of the cloned repo for dependency analysis
-        # to find files like package.json even when analyzing a subdirectory
         tech_stack, dep_details = analyze_dependencies(Path(temp_dir))
         
-        # The .gitignore file is at the root of the physical clone, not necessarily the analysis root
         gitignore_path = Path(temp_dir) / '.gitignore'
         ignore_matcher = parse_gitignore(gitignore_path, base_dir=Path(temp_dir)) if gitignore_path.exists() else lambda x: False
 
@@ -337,7 +353,6 @@ def generate_context_from_repo(repo_url, selected_extensions, file_line_limit=30
         context_parts.append(f"# 1. Project Dependencies Analysis\n\n{dep_details}\n\n---")
         
         st.info("Generating file structure...")
-        # --- MODIFIED --- Build tree from the analysis root but with a display name
         file_tree = build_file_tree(analysis_root, repo_display_name, ignore_matcher, selected_extensions)
         context_parts.append(f"# 2. Repository File Structure\n\n```\n{file_tree}\n```\n\n---")
         
@@ -345,19 +360,16 @@ def generate_context_from_repo(repo_url, selected_extensions, file_line_limit=30
         context_parts.append("# 3. File Contents\n")
         
         file_count = 0
-        # --- MODIFIED --- Iterate from the analysis root
         for path in sorted(analysis_root.rglob('*')):
-            # The ignore matcher needs the full path relative to the actual git repo root
             full_path_for_ignore = path.resolve()
             if path.is_file() and not ignore_matcher(full_path_for_ignore) and not any(part in DEFAULT_IGNORE for part in path.parts):
                 if path.suffix.lower() in selected_extensions or path.name in selected_extensions:
                     if not is_text_file(path): continue
                     
-                    # --- MODIFIED --- Calculate relative path from the analysis root
                     relative_path = path.relative_to(analysis_root).as_posix()
                     
                     try:
-                        original_content = path.read_text(encoding='utf-8')
+                        original_content = path.read_text(encoding='utf-8', errors='ignore')
                     except Exception as e:
                         st.warning(f"Could not read file {relative_path}: {e}")
                         continue
@@ -408,7 +420,6 @@ The following files were truncated because they exceeded the line limit of {file
     except Exception as e:
         return f"An unexpected error occurred: {e}"
     finally:
-        # Check if the directory exists before trying to remove it
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, onerror=remove_readonly)
 
@@ -420,7 +431,6 @@ st.markdown("An intelligent context generator for Large Language Models. This to
 repo_url = st.text_input(
     "Enter a GitHub repository URL (public or private)",
     placeholder="https://github.com/user/repo",
-    # --- NEW --- Add help text explaining the new feature
     help="You can also provide a URL to a specific subdirectory (e.g., https://github.com/user/repo/tree/main/src/app)."
 )
 
@@ -480,7 +490,6 @@ if st.button("🚀 Generate Intelligent Context", use_container_width=True):
         else:
             st.success("Intelligent context successfully generated!")
             
-            # --- MODIFIED --- Create a more descriptive filename for subdirectories
             base_repo_url, _, subdirectory = parse_github_url(repo_url)
             repo_name = Path(urlparse(base_repo_url).path).stem
             if subdirectory:
