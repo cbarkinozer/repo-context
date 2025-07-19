@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-context-generator"
+version = "0.1.0"
+authors = [
+  { name = "cbarkinozer", email = "c.barkinozer@gmail.com" },
+]
+description = "An intelligent context generator for Large Language Models from a GitHub repository."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development",
+    "Topic :: Text Processing",
+]
+# Your dependencies from requirements.txt go here
+dependencies = [
+    "streamlit>=1.28.0",
+    "GitPython>=3.1.40",
+    "gitignore-parser>=0.1.9",
+    "tomli>=2.0.0",
+    "PyYAML>=6.0",
+]
+
+# This is the magic part! It tells pip to create an executable script.
+[project.scripts]
+repo-context = "repo_context.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/cbarkinozer/repo-context"
+"Bug Tracker" = "https://github.com/cbarkinozer/repo-context/issues"

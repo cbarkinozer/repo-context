@@ -1,13 +1,14 @@
 # GitHub Repo to LLM Context Generator
 
+[![PyPI Version](https://img.shields.io/pypi/v/repo-context-generator.svg)](https://pypi.org/project/repo-context-generator/)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://repo-context.streamlit.app/)
 
-An intelligent context generator for Large Language Models. This tool analyzes a public **or private** GitHub repository, extracts key information, and formats it into a single, comprehensive text file.
+An intelligent context generator for Large Language Models. This tool analyzes a public **or private** GitHub repository, extracts key information, and formats it into a single, comprehensive text file. It is available as a command-line tool and as a web UI.
 
-You can use this when:  
-* You've closed the Gemini 2.5 chat in the Aistudio tab and there's no chat history available.
-* Your conversation with the LLM is going in circles. For example, repeating the same explanations or stuck in a dead end during model debugging.
-* You have questions about a repository, whether related to its implementation or its dependencies.
+You can use this when:
+*   You need to provide context to a Large Language Model without a "chat history" feature.
+*   Your conversation with an LLM is going in circles and you need to restart with full context.
+*   You have questions about a repository's implementation, dependencies, or structure.
 
 ## The Problem
 
@@ -15,34 +16,79 @@ When working with Large Language Models on a software project, providing the ful
 
 1.  **Limited Context Windows:** LLMs can't read an entire codebase at once.
 2.  **Tedious Manual Work:** Manually copying and pasting dozens of files is slow and error-prone.
-3.  **Irrelevant "Noise":** A raw dump includes useless "noise" for an LLM, such as `node_modules`, `__pycache__`, virtual environments, and build artifacts, which wastes precious context space.
+3.  **Irrelevant "Noise":** A raw dump includes useless "noise" for an LLM, such as `node_modules`, `__pycache__`, and build artifacts, which wastes precious context space.
 4.  **Lack of Structure:** A simple concatenation of files makes it hard for the LLM to distinguish where one file ends and another begins.
 
 This tool solves these problems by creating a clean, intelligent, and structured snapshot of your repository's current state.
 
 ## ✨ Key Features
 
+*   **Dual Interface:** Use the friendly [web UI](https://repo-context.streamlit.app/) or the powerful command-line tool (`repo-context`) for easy integration into scripts.
+*   **Pip Installable:** Easily install the tool with a single command: `pip install repo-context-generator`.
 *   **Private Repository Support:** Securely analyze private repositories using a GitHub Personal Access Token (PAT).
-*   **Automated Dependency Analysis:** Automatically detects the tech stack and lists all dependencies from files like `requirements.txt`, `package.json`, `pyproject.toml`, and `pubspec.yaml`.
-*   **Intelligent File Tagging:** Uses heuristics to add informative tags to files, such as `[⭐ Likely Project Entry Point]` or `[📦 Container Definition]`, to guide the LLM's focus.
-*   **Code Statistics:** Provides a quick overview of each file's complexity with line, character, and function/class counts.
-*   **Intelligent Filtering:** Automatically respects the repository's `.gitignore` file and excludes a comprehensive list of common non-essential files and directories.
-*   **Rich Metadata Header:** The generated context starts with a helpful header including the repository URL, a timestamp, and the latest commit details.
-*   **Shallow Clone:** Quickly clones only the latest commit of a repository to be fast and resource-efficient.
+*   **Automated Dependency Analysis:** Detects tech stacks (`Python`, `JavaScript`, etc.) and lists dependencies from common package files.
+*   **Intelligent File Tagging:** Adds heuristic tags like `[⭐ Likely Project Entry Point]` to guide the LLM's focus.
+*   **Intelligent Filtering:** Automatically respects the repository's `.gitignore` file and excludes common non-essential files.
+*   **Rich Metadata Header:** The context starts with a header including the repo URL, timestamp, and latest commit details.
 
-## 🚀 Live Demo
+## ⚙️ Installation
+
+Install the package directly from PyPI:
+
+```bash
+pip install repo-context-generator
+```
+
+## 🚀 Usage
+
+You can use the tool via the **Web UI** or the **Command-Line**.
+
+### 🖥️ Command-Line Interface
+
+Once installed, you can use the `repo-context` command in your terminal.
+
+**1. Generate context and print to console:**
+
+```bash
+repo-context "https://github.com/user/repo"
+```
+
+**2. Save context to a file:**
+
+```bash
+repo-context "https://github.com/user/repo/tree/main" -o my_project_context.md
+```
+
+**3. Analyze a private repository:**
+You can provide a token via the `--token` flag or the `GITHUB_TOKEN` environment variable.
+
+```bash
+# Using a flag
+repo-context "https://github.com/private-user/private-repo" --token YOUR_GITHUB_PAT
+
+# Or by setting an environment variable
+export GITHUB_TOKEN="YOUR_GITHUB_PAT"
+repo-context "https://github.com/private-user/private-repo"
+```
+
+**4. See all available options:**
+
+```bash
+repo-context --help
+```
+
+### 🌐 Web UI
 
 **Try the app live here:** [https://repo-context.streamlit.app/](https://repo-context.streamlit.app/)
 
-## 📋 How to Use
-
 1.  Navigate to the deployed Streamlit application.
-2.  Paste the full URL of a public or private GitHub repository into the text box.
+2.  Paste the full URL of a public or private GitHub repository.
 3.  **For private repositories,** expand the "🔑 Private Repository Access" section and paste your Personal Access Token (PAT).
-4.  (Optional) De-select any file extensions you wish to exclude from the context. All common extensions are included by default.
+4.  Configure any optional settings, like file extensions or line limits.
 5.  Click the **"🚀 Generate Intelligent Context"** button.
-6.  Wait for the processing to complete. The full context will be displayed on the page.
-7.  Use the **"📥 Download Context.md"** button to save the output and feed it to your favorite LLM!
+6.  Use the **"📥 Download Context.md"** button to save the output.
+
+---
 
 ## 📝 Example Output Structure
 
@@ -50,26 +96,27 @@ The generated output is a single, enriched Markdown file designed to be easily p
 
 ```markdown
 # LLM CONTEXT SNAPSHOT
-- **Repository:** https://github.com/user/my-python-app
-- **Snapshot Timestamp:** 2024-05-18 10:30:00 UTC
+- **Repository Source:** https://github.com/user/my-python-app
+- **Branch:** main
+- **Snapshot Timestamp:** 2025-07-19 20:55:00 UTC
 - **Last Commit Hash:** a1b2c3d4e5f6g7h8i9j0
 - **Last Commit Message:** "feat: Implement user authentication"
 - **Detected Technology Stack:** Python
+```
 ---
 
 # 1. Project Dependencies Analysis
 
 **Dependencies (`requirements.txt`):**
-```
+```txt
 streamlit==1.33.0
 gitpython==3.1.43
 pyyaml==6.0.1
 ```
 
----
 # 2. Repository File Structure
 
-```
+```txt
 📂 my-python-app
 ├── 📄 .gitignore
 ├── 📄 app.py
@@ -80,25 +127,16 @@ pyyaml==6.0.1
 ---
 # 3. File Contents
 
---- FILE: README.md [📖 Documentation] (Lines: 25 | Chars: 850) ---
-```markdown
-# My Awesome Project
-This is a project that does amazing things...
-```
-
 --- FILE: app.py [⭐ Likely Project Entry Point] (Lines: 152 | Chars: 4891 | Funcs/Classes: 6) ---
 ```python
 import streamlit as st
-from utils import helper_function
-
-st.title("My App")
 # ... rest of the file content
 ```
 ---
 
-## 💻 Running Locally
+## 💻 Running for Development
 
-To run this application on your local machine, follow these steps.
+To contribute to this project or run the web UI locally, follow these steps.
 
 **Prerequisites:**
 *   Python 3.8+
@@ -108,8 +146,8 @@ To run this application on your local machine, follow these steps.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/your-repo-name.git
-    cd your-repo-name
+    git clone https://github.com/cbarkinozer/repo-context.git
+    cd repo-context
     ```
 
 2.  **Create and activate a virtual environment:**
@@ -123,41 +161,26 @@ To run this application on your local machine, follow these steps.
     .\venv\Scripts\activate
     ```
 
-3.  **Install the dependencies:**
-    The application has additional dependencies for parsing different configuration files.
+3.  **Install the project in editable mode:**
+    This command reads the `pyproject.toml` file and installs all necessary dependencies, including Streamlit.
     ```bash
-    pip install -r requirements.txt
-    ```
-    Your `requirements.txt` should contain:
-    ```
-    streamlit
-    GitPython
-    gitignore-parser
-    tomli
-    PyYAML
+    pip install -e .
     ```
 
 4.  **Run the Streamlit app:**
     ```bash
     streamlit run app.py
     ```
-
-The application should now be running and accessible in your web browser at `http://localhost:8501`.
+The application should now be running at `http://localhost:8501`.
 
 ## 🛠️ Technologies Used
 
 *   **Framework:** [Streamlit](https://streamlit.io/)
 *   **Language:** Python 3
+*   **CLI:** `argparse`
 *   **Git Operations:** [GitPython](https://gitpython.readthedocs.io/en/stable/)
 *   **File Parsing:** [gitignore-parser](https://pypi.org/project/gitignore-parser/), [tomli](https://pypi.org/project/tomli/), [PyYAML](https://pypi.org/project/PyYAML/)
 
 ## 📄 License
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
-
-## 💡 Future Ideas
-
-*   **Token Counter:** Add a `tiktoken`-based counter to estimate API costs for different models.
-*   **Branch/Commit Selection:** Allow cloning a specific branch or commit hash for historical analysis.
-*   **Direct AI Summary:** Integrate an optional LLM call to generate a high-level summary of the generated context.
-*   **Broader Git Service Support:** Add specific helpers for GitLab and BitBucket private repo authentication.
