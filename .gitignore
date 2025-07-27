@@ -1,3 +1,4 @@
 .env
 dist/*
 src/repo_context_generator.egg-info/*
+venv/*
