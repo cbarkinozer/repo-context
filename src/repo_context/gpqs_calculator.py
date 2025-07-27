@@ -6,8 +6,6 @@ from urllib.parse import urlparse
 
 API_URL = 'https://api.github.com'
 
-# --- GITHUB API HELPER FUNCTIONS ---
-
 def get_repo_data(owner, repo, session):
     url = f"{API_URL}/repos/{owner}/{repo}"
     response = session.get(url)
@@ -44,13 +42,36 @@ def get_commit_activity(owner, repo, session):
     releases_last_year = sum(1 for r in releases_json if isinstance(r, dict) and 'published_at' in r and r['published_at'] and datetime.strptime(r['published_at'], '%Y-%m-%dT%H:%M:%SZ') > one_year_ago)
     return commits_last_year, releases_last_year
 
-def check_file_existence(owner, repo, paths, session):
-    if isinstance(paths, str): paths = [paths]
-    for path in paths:
-        url = f"{API_URL}/repos/{owner}/{repo}/contents/{path}"
-        if session.get(url).status_code == 200:
+def get_git_tree(owner, repo, branch, session):
+    url = f"{API_URL}/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+    response = session.get(url)
+    if response.status_code == 409: # Handles empty repository case
+        return []
+    response.raise_for_status()
+    tree = response.json().get("tree", [])
+    return [item['path'] for item in tree]
+
+def has_tests_in_tree(tree):
+    test_dirs = {'test', 'tests', 'spec', 'e2e', 'integration-tests'}
+    test_file_suffixes = {'_test.py', '.test.js', '.spec.js', '.test.ts', '.spec.ts'}
+    for path in tree:
+        parts = path.split('/')
+        if any(part in test_dirs for part in parts):
+            return True
+        if any(path.endswith(suffix) for suffix in test_file_suffixes):
             return True
     return False
+
+def get_readme_size(owner, repo, session):
+    url = f"{API_URL}/repos/{owner}/{repo}/readme"
+    response = session.get(url)
+    if response.status_code == 200:
+        return response.json().get("size", 0)
+    return 0
+
+def check_file_existence(owner, repo, path, session):
+    url = f"{API_URL}/repos/{owner}/{repo}/contents/{path}"
+    return session.get(url).status_code == 200
 
 def get_project_management_stats(owner, repo, session):
     url_issues = f"{API_URL}/repos/{owner}/{repo}/issues?state=closed&per_page=100"
@@ -77,7 +98,6 @@ def get_project_management_stats(owner, repo, session):
     avg_days_to_merge = (total_days_to_merge / merged_prs) if merged_prs > 0 else 0
     return avg_days_to_close, avg_days_to_merge, merged_prs, closed_unmerged_prs
 
-# --- SCORING FUNCTIONS ---
 def calculate_community_score(data):
     score_stars = min(100, math.log10(data['stars'] + data['watchers'] + 1) * 20)
     score_forks = min(100, math.log10(data['forks'] + 1) * 25)
@@ -90,16 +110,24 @@ def calculate_development_score(data):
     return (0.5 * score_frequency) + (0.5 * score_recency)
 
 def calculate_code_quality_score(data):
-    score_testing_ci = (50 if data['has_ci'] else 0) + (50 if data['has_tests'] else 0)
-    score_linter = 100 if data['has_linter'] else 0
-    score_dependency_health = max(0, 100 - (data['crit_alerts'] * 10) - (data['high_alerts'] * 5))
-    return (0.4 * score_testing_ci) + (0.3 * score_linter) + (0.3 * score_dependency_health)
+    ci_score = 100 if data['has_ci'] else 0
+    test_score = 100 if data['has_tests_in_tree'] else 0
+    return (0.5 * ci_score) + (0.5 * test_score)
 
 def calculate_documentation_score(data):
-    score_readme_contrib = (70 if data['has_readme'] else 20) + (30 if data['has_contrib'] else 0)
-    score_doc_website = 100 if data['has_doc_website'] else 0
-    community_files_score = (33.33 if data['has_coc'] else 0) + (33.33 if data['has_license'] else 0) + (33.33 if data['has_template'] else 0)
-    return (0.5 * score_readme_contrib) + (0.3 * score_doc_website) + (0.2 * community_files_score)
+    readme_size = data.get('readme_size', 0)
+    if readme_size > 10000:
+        readme_score = 100
+    elif readme_size > 5000:
+        readme_score = 70
+    elif readme_size > 1000:
+        readme_score = 40
+    else:
+        readme_score = 0
+    
+    community_files_score = (50 if data['has_license'] else 0) + (30 if data['has_contrib'] else 0) + (20 if data['has_coc'] else 0)
+    
+    return (0.7 * readme_score) + (0.3 * community_files_score)
 
 def calculate_project_management_score(data):
     total_issues = data['open_issues'] + data['closed_unmerged_prs']
@@ -112,19 +140,10 @@ def calculate_project_management_score(data):
     pr_mgmt_score = (0.5 * pr_acceptance_rate) + (0.5 * time_to_merge_score)
     return (0.6 * issue_mgmt_score) + (0.4 * pr_mgmt_score)
 
-# --- MAIN ANALYSIS FUNCTION ---
-
-def run_gpqs_analysis(repo_url, gh_token=None, manual_overrides=None):
-    """
-    Takes a repo URL and returns the scores and raw data.
-    This is the main non-interactive entry point for use in other scripts.
-    """
+def run_gpqs_analysis(repo_url, gh_token=None):
     session = requests.Session()
     if gh_token:
         session.headers.update({'Authorization': f'token {gh_token}'})
-
-    if manual_overrides is None:
-        manual_overrides = {}
 
     try:
         parsed_url = urlparse(repo_url)
@@ -134,6 +153,9 @@ def run_gpqs_analysis(repo_url, gh_token=None, manual_overrides=None):
         owner, repo = path_parts[0], path_parts[1]
 
         repo_data = get_repo_data(owner, repo, session)
+        default_branch = repo_data.get('default_branch', 'main')
+        git_tree = get_git_tree(owner, repo, default_branch, session)
+        
         commits_last_year, releases_last_year = get_commit_activity(owner, repo, session)
         avg_days_close, avg_days_merge, merged_prs, closed_unmerged_prs = get_project_management_stats(owner, repo, session)
 
@@ -146,17 +168,12 @@ def run_gpqs_analysis(repo_url, gh_token=None, manual_overrides=None):
             'commits_last_year': commits_last_year,
             'releases_last_year': releases_last_year,
             'days_since_commit': (datetime.now() - datetime.strptime(repo_data.get('pushed_at'), '%Y-%m-%dT%H:%M:%SZ')).days,
-            'has_ci': check_file_existence(owner, repo, '.github/workflows', session),
-            'has_tests': check_file_existence(owner, repo, ['tests', 'test', 'src/test', 'spec'], session),
-            'has_linter': check_file_existence(owner, repo, ['.eslintrc', 'pyproject.toml', '.rubocop.yml', 'checkstyle.xml'], session),
-            'crit_alerts': manual_overrides.get('dependency_critical_alerts', 0),
-            'high_alerts': manual_overrides.get('dependency_high_alerts', 0),
-            'has_readme': repo_data.get('size', 0) > 10,
+            'has_ci': '.github/workflows' in [path.split('/')[0] + '/' + path.split('/')[1] for path in git_tree if path.startswith('.github/workflows')],
+            'has_tests_in_tree': has_tests_in_tree(git_tree),
+            'readme_size': get_readme_size(owner, repo, session),
             'has_contrib': check_file_existence(owner, repo, 'CONTRIBUTING.md', session),
-            'has_doc_website': bool(repo_data.get('homepage')),
             'has_coc': check_file_existence(owner, repo, 'CODE_OF_CONDUCT.md', session),
-            'has_license': bool(repo_data.get('license')),
-            'has_template': check_file_existence(owner, repo, ['.github/ISSUE_TEMPLATE', '.github/pull_request_template.md'], session),
+            'has_license': bool(repo_data.get('license')) or check_file_existence(owner, repo, 'LICENSE', session),
             'avg_days_close': avg_days_close,
             'avg_days_merge': avg_days_merge,
             'merged_prs': merged_prs,
@@ -171,9 +188,11 @@ def run_gpqs_analysis(repo_url, gh_token=None, manual_overrides=None):
         project_management_score = calculate_project_management_score(raw_data)
 
         gpqs_score = (
-            (0.25 * community_score) + (0.25 * development_score) +
-            (0.20 * code_quality_score) + (0.15 * documentation_score) +
-            (0.15 * project_management_score)
+            (0.35 * community_score) +
+            (0.35 * development_score) +
+            (0.15 * code_quality_score) +
+            (0.10 * documentation_score) +
+            (0.05 * project_management_score)
         )
 
         scores = {
@@ -184,7 +203,7 @@ def run_gpqs_analysis(repo_url, gh_token=None, manual_overrides=None):
             "Code Quality Score": round(code_quality_score, 2),
             "Documentation Score": round(documentation_score, 2),
             "Project Management Score": round(project_management_score, 2),
-            "Stars": raw_data['stars'], # Also include some key raw metrics
+            "Stars": raw_data['stars'],
             "Forks": raw_data['forks']
         }
         return scores, raw_data, None
