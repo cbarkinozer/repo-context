@@ -1,4 +1,3 @@
-# pages/2_⭐_GPQS_Comparison.py
 import streamlit as st
 import pandas as pd
 from src.repo_context.gpqs_calculator import run_gpqs_analysis
@@ -115,15 +114,10 @@ if st.session_state.results:
             with col2:
                 st.markdown("**[ Code Quality ]**")
                 st.text(f"  - CI/CD Workflow Detected: {data['has_ci']}\n"
-                        f"  - Test Folder Detected: {data['has_tests']}\n"
-                        f"  - Linter Config Detected: {data['has_linter']}\n"
-                        f"  - Critical Alerts (Assumed): {data['crit_alerts']}\n"
-                        f"  - High Alerts (Assumed): {data['high_alerts']}")
+                        f"  - Test Setup Detected: {data['has_tests_in_tree']}")
 
                 st.markdown("**[ Documentation & Usability ]**")
-                st.text(f"  - README Exists: {data['has_readme']}\n"
+                st.text(f"  - README Exists: {data.get('readme_size', 0) > 0}\n"
                         f"  - CONTRIBUTING.md Exists: {data['has_contrib']}\n"
-                        f"  - Has Documentation Website: {data['has_doc_website']}\n"
-                        f"  - Has Code of Conduct: {data['has_coc']}\n"
-                        f"  - Has LICENSE File: {data['has_license']}\n"
-                        f"  - Has Issue/PR Templates: {data['has_template']}")
+                        f"  - Code of Conduct Exists: {data['has_coc']}\n"
+                        f"  - LICENSE File Exists: {data['has_license']}")
