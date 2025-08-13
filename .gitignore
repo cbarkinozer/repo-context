@@ -2,3 +2,4 @@
 dist/*
 src/repo_context_generator.egg-info/*
 venv/*
+**/__pycache__/**
