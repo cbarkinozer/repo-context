@@ -10,11 +10,13 @@ st.set_page_config(
 st.title("Welcome to Repo Context Tools! 🛠️")
 st.markdown("""
 This application provides a suite of tools for analyzing GitHub repositories.
+Use the navigation sidebar on the left to select a tool.
+            
+# TOOLS
 
-Use the navigation sidebar on the left to select a tool:
-
-- **Repo Context Generator:** Creates a detailed, LLM-consumable text file from a repository's contents.
-- **Repo Comparison:** Analyzes and compares multiple repositories based on the GitHub Project Quality & Success (GPQS) metric.
+*   **Repo Context Generator:** Creates a detailed, LLM-consumable text file from a repository's contents.
+*    **Repo Comparison:** Analyzes and compares multiple repositories based on the GitHub Project Quality & Success (GPQS) metric.
+*    **Deep Wiki LLM Context Generator:** Scrapes a Deep Wiki documentation site and compiles all its pages into a single text file, perfect for creating a knowledge base for LLMs.
 
 ### What is GPQS?
 The **GitHub Project Quality & Success (GPQS)** score is a weighted metric designed to provide a holistic view of a project's quality and health. It considers factors like community engagement, development activity, code quality, documentation, and project management.
